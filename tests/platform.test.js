@@ -58,6 +58,19 @@ test('OTT scale, tempo, articulation and volume follow a known encoded note', ()
   assert.ok(Math.abs(melody.notes[0].gate-.355)<1e-10);
 });
 
+test('coin and key pickup notes retain an audible body instead of 1 ms pulses', async () => {
+  for(const name of ['coin.ott','key.ott']) {
+    const melody=decodeOTT(await readFile(new URL(`../public/original/${name}`,import.meta.url)));
+    const notes=melody.notes.filter(note=>note.frequency);
+    assert.ok(notes.length>=4);
+    for(const note of notes) {
+      assert.ok(Math.abs(note.duration-60/2840)<1e-10);
+      assert.ok(Math.abs(note.gate/note.duration-.875)<1e-10);
+      assert.ok(note.gate/PLAYBACK_RATE>.028,'each pickup tone must sound for at least 28 ms at 0.64 speed');
+    }
+  }
+});
+
 test('0.64 playback produces 320 steps over 10 seconds at 60, 120 and 144 Hz', () => {
   assert.equal(PLAYBACK_RATE,0.64);
   for (const hz of [60,120,144]) {
@@ -136,7 +149,10 @@ test('Web Audio uses decoded notes and cancels repeat scheduling and active node
       envelopes.push(events);
       return {gain:{
         setValueAtTime(value,time){events.push({value,time});},
-        linearRampToValueAtTime(value,time){events.push({value,time});}
+        linearRampToValueAtTime(value,time){events.push({value,time});},
+        cancelScheduledValues(time){
+          for(let i=events.length-1;i>=0;i--) if(events[i].time>=time) events.splice(i,1);
+        }
       },connect(){},disconnect(){}};
     }
   };
@@ -162,9 +178,15 @@ test('Web Audio uses decoded notes and cancels repeat scheduling and active node
     }
     platform.stopSound(id+1);
     assert.ok(platform.activeSound);
+    const voice=[...platform.activeSound.nodes.values()][0];
+    platform.audio.currentTime=voice.from+voice.ramp/2;
     platform.stopSound(id);
     assert.equal(platform.activeSound,null);
     assert.ok(nodes.every(node=>node.stops===2));
+    assert.ok(Math.abs(nodes[0].to-platform.audio.currentTime-.003)<1e-10);
+    assert.ok(Math.abs(envelopes[0].at(-2).value-voice.peak/2)<1e-10);
+    assert.equal(envelopes[0].at(-1).value,0);
+    assert.ok(nodes.slice(1).every(node=>node.to===platform.audio.currentTime),'future notes are canceled before starting');
     for(const node of nodes) node.onended();
     assert.ok(nodes.every(node=>node.disconnected));
   } finally { platform.stopSound(-1); }

@@ -209,7 +209,7 @@ export class Platform {
     if (!Number.isInteger(repeats) || repeats < 0) throw new Error('Invalid sound repeat count');
     const melody = this.sounds[id];
     if (!melody) throw new Error(`Missing sound ${id}`);
-    const active = { id, nodes: new Set(), timer: null, count: 0 };
+    const active = { id, nodes: new Map(), timer: null, count: 0 };
     this.activeSound = active;
     let start = this.audio.currentTime + 0.015;
     const schedule = () => {
@@ -220,14 +220,15 @@ export class Platform {
         const from = start + note.start / PLAYBACK_RATE;
         const to = from + note.gate / PLAYBACK_RATE;
         const ramp = Math.min(0.003, (to - from) / 3);
+        const peak = note.volume * 0.075;
         oscillator.type = SOUND_WAVEFORM;
         oscillator.frequency.value = note.frequency * 2 ** (SOUND_PITCH_SEMITONES / 12);
         gain.gain.setValueAtTime(0, from);
-        gain.gain.linearRampToValueAtTime(note.volume * 0.075, from + ramp);
-        gain.gain.setValueAtTime(note.volume * 0.075, to - ramp);
+        gain.gain.linearRampToValueAtTime(peak, from + ramp);
+        gain.gain.setValueAtTime(peak, to - ramp);
         gain.gain.linearRampToValueAtTime(0, to);
         oscillator.connect(gain); gain.connect(this.audio.destination);
-        active.nodes.add(oscillator);
+        active.nodes.set(oscillator, { gain, from, to, ramp, peak });
         oscillator.onended = () => {
           oscillator.disconnect(); gain.disconnect(); active.nodes.delete(oscillator);
         };
@@ -249,7 +250,20 @@ export class Platform {
     const active = this.activeSound;
     if (!active || (id !== -1 && active.id !== id)) return;
     clearTimeout(active.timer);
-    for (const node of active.nodes) node.stop();
+    const now = this.audio.currentTime;
+    for (const [node, voice] of active.nodes) {
+      if (now < voice.from || now >= voice.to) {
+        node.stop(now);
+        continue;
+      }
+      const { gain, from, to, ramp, peak } = voice;
+      const level = peak * Math.max(0, Math.min(1, (now - from) / ramp, (to - now) / ramp));
+      const end = Math.min(now + 0.003, to);
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(level, now);
+      gain.gain.linearRampToValueAtTime(0, end);
+      node.stop(end);
+    }
     this.activeSound = null;
   }
   vibrate(ms) { if (typeof navigator.vibrate === 'function') navigator.vibrate(ms); }

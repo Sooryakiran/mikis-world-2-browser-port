@@ -59,7 +59,7 @@ export function decodeOTT(bytes) {
           const seconds = (240 / bpm) / (2 ** duration) * [1, 1.5, 1.75, 2 / 3][modifier];
           // Scale 0 is octave 4; note 1 is C, note 0 is a rest.
           const frequency = note === 0 ? 0 : 440 * 2 ** ((60 + scale * 12 + note - 1 - 69) / 12);
-          const gate = style === 1 ? seconds : style === 2 ? seconds / 2 : Math.max(0, seconds - 0.02);
+          const gate = style === 1 ? seconds : style === 2 ? seconds / 2 : seconds - Math.min(0.02, seconds / 8);
           notes.push({ start: time, duration: seconds, gate, frequency, volume: volume / 15 });
           time += seconds;
         }

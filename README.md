@@ -125,6 +125,11 @@ player pacing preference, **not a claim of measured handset cadence**.
 The browser uses a triangle waveform (`SOUND_WAVEFORM`) to soften the square
 wave's buzzy upper harmonics without transposing notes. Attack/release ramps
 shrink symmetrically for very short original effects to avoid level jumps.
+Natural-style separation is capped at one eighth of a note (and at 20 ms for
+longer notes). This browser articulation policy keeps the original 21 ms
+coin/key notes from collapsing into 1 ms clicks; note onsets, total durations,
+rests and pitches are unchanged. Stopping or replacing an effect fades any
+currently audible note over up to 3 ms and cancels future notes.
 The configurable constants are in `browser-platform.js`.
 
 ## Validation
