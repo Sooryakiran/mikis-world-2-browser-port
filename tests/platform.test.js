@@ -64,7 +64,7 @@ test('coin and key pickup notes retain an audible body instead of 1 ms pulses', 
     const notes=melody.notes.filter(note=>note.frequency);
     assert.ok(notes.length>=4);
     for(const note of notes) {
-      assert.ok(Math.abs(note.duration-60/2840)<1e-10);
+      assert.ok(Math.abs(note.duration-240/355/32)<1e-10);
       assert.ok(Math.abs(note.gate/note.duration-.875)<1e-10);
       assert.ok(note.gate/PLAYBACK_RATE>.028,'each pickup tone must sound for at least 28 ms at 0.64 speed');
     }

@@ -7,7 +7,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const preview = process.argv.includes('--preview');
 const base = preview ? join(root, 'dist') : root;
 const port = Number(process.env.PORT ?? (preview ? 4175 : 4173));
-const files = new Set(['index.html','style.css','app.js','browser-platform.js','ott.js','license.txt','TEAVM-LICENSE.txt','THIRD-PARTY-NOTICES.txt']);
+const files = new Set(['index.html','style.css','app.js','browser-platform.js','ott.js','TEAVM-LICENSE.txt','THIRD-PARTY-NOTICES.txt']);
 const types = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.txt':'text/plain; charset=utf-8' };
 if (preview) {
   for (const name of ['index.html','generated/game.js','original/manifest.json']) {

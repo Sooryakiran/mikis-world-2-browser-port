@@ -20,7 +20,7 @@ npm start
 ```
 
 Open <http://127.0.0.1:4173>, click **Play** to enable browser audio, then use the
-original **New game** command. The original opening story runs before gameplay.
+**Menu** popup's original **New game** command. The original opening story runs before gameplay.
 The game retains its original title/splash flow and menus.
 
 | Input | Action |
@@ -38,11 +38,18 @@ Release, pointer cancellation, pause and loss of focus clear input. When a key i
 released the adapter reasserts other held keys because this game's original
 release handler clears both axes.
 
-The toolbar provides pause, fullscreen and credits/license controls. Native
+The game fills the browser viewport, preserving the original aspect ratio with
+letterboxing rather than stretching or cropping. The toolbar and touch keypad
+overlay the game without reducing its display area. Original game options,
+including form Back/Save commands, are in the **Menu** popup rather than along
+the bottom of the screen. Selecting a command closes the popup and restores
+the previous pause state.
+The toolbar provides a **New Game** shortcut when the original New game command
+is available, plus pause, fullscreen and credits/license controls. Native
 fullscreen is optional and requires browser support and a user gesture.
 Switching away pauses the game; click **Resume** when returning.
 Opening/closing the browser menu does not undo an existing explicit pause.
-Original phone forms use HTML controls, including their Back/Save commands.
+Original phone forms use HTML controls.
 
 Settings and high scores use namespaced, localStorage-backed RMS records.
 **Continue game is in-session only**, not a new persistent save-game feature.
@@ -67,6 +74,8 @@ integrity checking requires HTTPS or localhost. Opening the HTML directly with
 
 Packaging checks required files, copies to a staging directory, then replaces
 `dist/`. Do not store hand-maintained files in that generated directory.
+There is no standalone `license.txt` or `licence.txt` dependency: the supplied
+game terms are included in `THIRD-PARTY-NOTICES.txt` and linked from the menu.
 The source JAR, build tools, Java sources and test dependencies are not deployed.
 
 ## Architecture
@@ -178,7 +187,8 @@ Their dedicated server uses port 4174.
 ## Rights and attribution
 
 You confirmed permission to adapt and distribute this specific game
-non-commercially and supplied [license.txt](license.txt). It restricts commercial
+non-commercially and supplied the license now included in
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). It restricts commercial
 use, monetization and sublicensing. Keep that license and the notice accessible
 with any deployment; this is not a general license for other JARs.
 

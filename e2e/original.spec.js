@@ -1,5 +1,144 @@
 import { test, expect } from '@playwright/test';
 
+async function command(page, name) {
+  await page.locator('#menu-toggle').click();
+  await page.locator('#commands').getByRole('button', { name, exact: true }).click();
+  await expect(page.locator('#menu')).toBeHidden();
+  await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded', 'false');
+}
+
+for (const menuOpen of [false, true]) {
+  test(`top bar New Game starts the original game with menu ${menuOpen ? 'open' : 'closed'}`, async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#new-game')).toBeDisabled();
+    await page.locator('#start').click();
+    await expect(page.locator('#toolbar #new-game')).toBeEnabled();
+    await expect(page.locator('#new-game')).toBeInViewport();
+    await command(page, 'Instructions');
+    await expect(page.locator('#new-game')).toBeDisabled();
+    await command(page, 'Back');
+    await expect(page.locator('#new-game')).toBeEnabled();
+    if (menuOpen) await page.locator('#menu-toggle').click();
+    await page.locator('#new-game').click();
+    await expect(page.locator('#menu')).toBeHidden();
+    await expect(page.locator('#pause')).toHaveText('Pause');
+    await expect(page.locator('#screen')).toBeFocused();
+    await expect.poll(() => page.evaluate(() => JSON.parse(globalThis.mikiPlatform.callbacks.state()).mode)).toBe(1);
+    await expect(page.locator('#message')).toBeHidden();
+  });
+}
+
+test('original coin/key pickups render sustained tones and silent rests, not click pulses', async ({ page }) => {
+  await page.goto('/');
+  const measurements=await page.evaluate(async ()=>{
+    const {Platform,PLAYBACK_RATE}=await import('./browser-platform.js');
+    const results=[];
+    for(const name of ['coin.ott','key.ott']) {
+      const bytes=new Uint8Array(await (await fetch(`./original/${name}`)).arrayBuffer());
+      let binary='';
+      for(const byte of bytes) binary+=String.fromCharCode(byte);
+      const platform=new Platform(null,null,null,error=>{throw error;});
+      const id=platform.sound(binary),melody=platform.sounds[id];
+      platform.audio=new OfflineAudioContext(1,Math.ceil((melody.duration/PLAYBACK_RATE+.1)*48000),48000);
+      platform.playSound(id,1);
+      try {
+        const samples=(await platform.audio.startRendering()).getChannelData(0);
+        const voiced=[],rests=[];
+        for(const note of melody.notes) {
+          const from=Math.ceil((.015+(note.start+note.duration*.3)/PLAYBACK_RATE)*48000);
+          const to=Math.floor((.015+(note.start+note.duration*.6)/PLAYBACK_RATE)*48000);
+          let energy=0;
+          for(let i=from;i<to;i++) energy+=samples[i]**2;
+          (note.frequency ? voiced : rests).push(Math.sqrt(energy/(to-from)));
+        }
+        results.push({name,minToneRms:Math.min(...voiced),maxRestRms:Math.max(0,...rests)});
+      } finally { platform.stopSound(-1); }
+    }
+    return results;
+  });
+  for(const result of measurements) {
+    expect(result.minToneRms,`${result.name} must remain audible through the middle of each note`).toBeGreaterThan(.01);
+    expect(result.maxRestRms,`${result.name} rests must remain silent`).toBeLessThan(1e-7);
+  }
+});
+
+test('interrupting a live pickup fades to zero instead of cutting the waveform', async ({ page }) => {
+  await page.goto('/');
+  const result=await page.evaluate(async ()=>{
+    const {Platform}=await import('./browser-platform.js');
+    const render=async interrupt=>{
+      const audio=new OfflineAudioContext(1,9600,48000);
+      const platform=new Platform(null,null,null,error=>{throw error;});
+      platform.audio=audio;
+      platform.sounds.push({duration:.1,notes:[{start:0,duration:.1,gate:.1,frequency:1244.5079348883237,volume:1}]});
+      platform.playSound(0,1);
+      let stoppedAt;
+      const suspended=interrupt ? audio.suspend(.04).then(()=>{
+        stoppedAt=audio.currentTime;
+        platform.stopSound(0);
+        return audio.resume();
+      }) : Promise.resolve();
+      try {
+        const buffer=await audio.startRendering();
+        await suspended;
+        return {samples:buffer.getChannelData(0),stoppedAt};
+      } finally { platform.stopSound(-1); }
+    };
+    const control=await render(false),faded=await render(true);
+    const index=Math.round(faded.stoppedAt*48000);
+    return {
+      atStop:Math.abs(faded.samples[index]),
+      edgeDifference:Math.abs(faded.samples[index]-control.samples[index]),
+      halfway:Math.abs(faded.samples[index+72]),
+      expectedHalfway:Math.abs(control.samples[index+72])*.5,
+      afterFade:Math.max(...faded.samples.slice(index+145).map(Math.abs))
+    };
+  });
+  expect(result.atStop).toBeGreaterThan(.005);
+  expect(result.edgeDifference).toBeLessThan(1e-6);
+  expect(result.halfway).toBeCloseTo(result.expectedHalfway,5);
+  expect(result.afterFade).toBeLessThan(1e-7);
+});
+
+test('game fills the viewport with controls overlaid before and after resizing', async ({ page }) => {
+  await page.goto('/');
+  const expectFullViewport = async () => {
+    const size = page.viewportSize();
+    for (const selector of ['#game', '#viewport', '#screen']) {
+      expect(await page.locator(selector).boundingBox()).toEqual({
+        x: 0, y: 0, width: size.width, height: size.height
+      });
+    }
+    const layout = await page.evaluate(() => ({
+      fit: getComputedStyle(document.querySelector('#screen')).objectFit,
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight
+    }));
+    expect(layout).toEqual({ fit: 'contain', width: size.width, height: size.height });
+  };
+  await expect(page.locator('#start')).toBeEnabled();
+  await expectFullViewport();
+  await page.locator('#start').click();
+  await expect(page.getByRole('button', { name: 'New game', exact: true })).toBeHidden();
+  await expect(page.locator('#menu #commands')).toHaveCount(1);
+  await expectFullViewport();
+  await command(page, 'Instructions');
+  await expect(page.locator('#native-ui')).toBeVisible();
+  await command(page, 'Back');
+  const size = page.viewportSize();
+  await page.setViewportSize({ width: size.height, height: size.width });
+  await expectFullViewport();
+  await expect(page.locator('#toolbar')).toBeInViewport();
+  await page.locator('#menu-toggle').click();
+  await expect(page.getByRole('button', { name: 'New game', exact: true })).toBeInViewport();
+  await page.locator('#menu-toggle').click();
+  if (await page.locator('#touch').isVisible()) {
+    for (const button of await page.locator('#touch button').all()) {
+      await expect(button).toBeInViewport();
+    }
+  }
+});
+
 test('high notes retain pitch with reduced buzzy upper harmonics and no clipping', async ({ page }) => {
   await page.goto('/');
   const measured=await page.evaluate(async ()=>{
@@ -61,8 +200,8 @@ test('loads original game, starts gameplay, pauses, and retains settings on relo
   await expect(page.locator('#start')).toBeEnabled();
   await page.locator('#start').click();
   await expect(page.locator('#startup')).toBeHidden();
-  await expect(page.getByRole('button',{name:'New game',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'New game',exact:true}).click();
+  await expect(page.getByRole('button',{name:'New game',exact:true})).toBeHidden();
+  await command(page, 'New game');
   await expect.poll(
     () => page.evaluate(()=>JSON.parse(globalThis.mikiPlatform.callbacks.state()).state),
     {timeout:30000}
@@ -105,14 +244,14 @@ test('original forms, browser audio, input cancellation and fullscreen denial', 
   await page.goto('/');
   await page.locator('#start').click();
   for(const name of ['Instructions','High scores','About']) {
-    await page.getByRole('button',{name,exact:true}).click();
+    await command(page, name);
     await expect(page.locator('#native-ui')).toBeVisible();
-    await page.getByRole('button',{name:'Back',exact:true}).click();
+    await command(page, 'Back');
     await expect(page.locator('#native-ui')).toBeHidden();
   }
-  await page.getByRole('button',{name:'Sound: on',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Sound: off',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Sound: off',exact:true}).click();
+  await command(page, 'Sound: on');
+  await command(page, 'Sound: off');
+  await expect.poll(() => page.evaluate(() => globalThis.mikiPlatform.audio.state)).toBe('running');
   const audio=await page.evaluate(()=>{
     const p=globalThis.mikiPlatform;
     p.stopSound(-1);
@@ -134,9 +273,9 @@ test('original forms, browser audio, input cancellation and fullscreen denial', 
   expect(audio.actual.length).toBe(audio.expected.length);
   audio.actual.forEach((value,i)=>expect(value).toBeCloseTo(audio.expected[i],2));
 
-  await page.getByRole('button',{name:'New game',exact:true}).click();
+  await command(page, 'New game');
   await expect.poll(()=>page.evaluate(()=>JSON.parse(globalThis.mikiPlatform.callbacks.state()).state)).toBe(20);
-  await page.keyboard.press('Space');
+  await page.keyboard.press('Space', { delay: 100 });
   await expect.poll(()=>page.evaluate(()=>JSON.parse(globalThis.mikiPlatform.callbacks.state()).state),{timeout:20000}).toBe(0);
   const events=await page.evaluate(()=>{
     const p=globalThis.mikiPlatform, events=[], key=p.callbacks.key;

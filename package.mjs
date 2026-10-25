@@ -1,6 +1,6 @@
 import { cp, mkdir, rename, rm, stat } from 'node:fs/promises';
 
-const files = ['index.html','style.css','app.js','browser-platform.js','ott.js','license.txt','TEAVM-LICENSE.txt','THIRD-PARTY-NOTICES.txt'];
+const files = ['index.html','style.css','app.js','browser-platform.js','ott.js','TEAVM-LICENSE.txt','THIRD-PARTY-NOTICES.txt'];
 for (const path of [...files, 'public/generated/game.js', 'public/original/manifest.json']) await stat(path);
 // Stage first so a failed copy cannot replace a previously usable package.
 const stage = '.package-stage';

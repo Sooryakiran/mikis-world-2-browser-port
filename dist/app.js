@@ -12,6 +12,7 @@ const report = (error, fatal = true) => {
     input.clear();
     platform.stopSound(-1);
     $('#pause').disabled = true;
+    $('#new-game').disabled = true;
     $('#start').disabled = true;
     $('#loading').textContent = 'Startup failed. See the error below.';
   }
@@ -19,12 +20,22 @@ const report = (error, fatal = true) => {
 const platform = new Platform($('#screen'), $('#native-ui'), $('#commands'), report);
 globalThis.mikiPlatform = platform;
 const input = new InputSources((key, pressed) => platform.invoke(() => platform.callbacks?.key(key, pressed)));
-platform.onScreenChange = () => input.clear();
+function newGameCommand() {
+  return [...$('#commands').querySelectorAll('button')].find(button => button.textContent === 'New game');
+}
+function updateNewGameButton() {
+  $('#new-game').disabled = !started || failed || platform.exited || !newGameCommand();
+}
+platform.onScreenChange = () => {
+  input.clear();
+  updateNewGameButton();
+};
 platform.onExit = () => {
   input.clear();
   $('#message').textContent = 'Game exited. Reload to play again.';
   $('#message').hidden = false;
   $('#pause').disabled = true;
+  $('#new-game').disabled = true;
 };
 
 async function setPaused(value) {
@@ -50,6 +61,7 @@ $('#start').addEventListener('click', async () => {
     main([]);
     if (!platform.callbacks || platform.exited) throw new Error('Original MIDlet did not initialize');
     started = true;
+    updateNewGameButton();
     $('#startup').hidden = true;
     $('#pause').disabled = false;
     lastFrame = null;
@@ -67,6 +79,14 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+$('#new-game').addEventListener('click', () => {
+  const command = newGameCommand();
+  if (!command) {
+    report(new Error('New game is unavailable on the current game screen.'), false);
+    return;
+  }
+  command.click();
+});
 $('#pause').addEventListener('click', () => void setPaused(!paused));
 $('#reload').addEventListener('click', () => location.reload());
 $('#mute').addEventListener('click', () => {
@@ -75,13 +95,19 @@ $('#mute').addEventListener('click', () => {
   $('#mute').setAttribute('aria-pressed', String(platform.muted));
   $('#mute').textContent = platform.muted ? 'Unmute browser audio' : 'Mute browser audio';
 });
-$('#menu-toggle').addEventListener('click', () => {
-  const open = $('#menu').hidden;
+function setMenuOpen(open) {
   $('#menu').hidden = !open;
   $('#menu-toggle').setAttribute('aria-expanded', String(open));
   if (open) { menuWasPaused = paused; void setPaused(true); }
   else if (!menuWasPaused) void setPaused(false);
-});
+}
+$('#menu-toggle').addEventListener('click', () => setMenuOpen($('#menu').hidden));
+$('#commands').addEventListener('click', event => {
+  if (event.target instanceof HTMLButtonElement) {
+    if (!$('#menu').hidden) setMenuOpen(false);
+    $('#screen').focus();
+  }
+}, true);
 $('#fullscreen').addEventListener('click', async () => {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
