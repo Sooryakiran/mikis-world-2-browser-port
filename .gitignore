@@ -1,0 +1,8 @@
+.gradle/
+build/
+node_modules/
+test-results/
+playwright-report/
+public/generated/
+public/original/
+.package-stage/

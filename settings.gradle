@@ -1,0 +1,2 @@
+pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
+rootProject.name = 'mikis-world-2-browser'

@@ -1,0 +1,19 @@
+{
+  "name": "mikis-world-2-browser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Non-commercial AOT browser port of the authorized Miki's World 2 JAR",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "./gradlew --no-daemon --console=plain generateJavaScript",
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test --test-timeout=15000 tests/*.test.js",
+    "check": "node --check app.js && node --check browser-platform.js && node --check ott.js && node --check server.mjs && node --check package.mjs",
+    "test:browser": "playwright test",
+    "package": "npm run build && node package.mjs",
+    "preview": "node server.mjs --preview"
+  },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
